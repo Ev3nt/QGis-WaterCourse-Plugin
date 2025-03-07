@@ -37,49 +37,70 @@ int GdalRasterBand::getBand() {
 
 int GdalRasterBand::rasterByte(int offsetX, int offsetY, int xSize, int ySize, void* buffer, int xBufferSize, int yBufferSize) {
 	GDALRasterBand* rasterBand = (GDALRasterBand*)rasterBand_;
-	std::unique_lock lock(mutex_);
+	std::unique_lock<std::mutex> lock;
+	if (!rasterBand->GetDataset()->IsThreadSafe(GDAL_OF_RASTER)) {
+		lock = std::unique_lock(mutex_);
+	}
 
 	return rasterBand->RasterIO(GF_Read, offsetX, offsetY, xSize, ySize, buffer, xBufferSize, yBufferSize, GDT_Byte, 0, 0);
 }
 
 int GdalRasterBand::rasterInt(int offsetX, int offsetY, int xSize, int ySize, void* buffer, int xBufferSize, int yBufferSize) {
 	GDALRasterBand* rasterBand = (GDALRasterBand*)rasterBand_;
-	std::unique_lock lock(mutex_);
+	std::unique_lock<std::mutex> lock;
+	if (!rasterBand->GetDataset()->IsThreadSafe(GDAL_OF_RASTER)) {
+		lock = std::unique_lock(mutex_);
+	}
 
 	return rasterBand->RasterIO(GF_Read, offsetX, offsetY, xSize, ySize, buffer, xBufferSize, yBufferSize, GDT_Int32, 0, 0);
 }
 
 int GdalRasterBand::rasterUInt32(int offsetX, int offsetY, int xSize, int ySize, void* buffer, int xBufferSize, int yBufferSize) {
 	GDALRasterBand* rasterBand = (GDALRasterBand*)rasterBand_;
-	std::unique_lock lock(mutex_);
+	std::unique_lock<std::mutex> lock;
+	if (!rasterBand->GetDataset()->IsThreadSafe(GDAL_OF_RASTER)) {
+		lock = std::unique_lock(mutex_);
+	}
 
 	return rasterBand->RasterIO(GF_Read, offsetX, offsetY, xSize, ySize, buffer, xBufferSize, yBufferSize, GDT_UInt32, 0, 0);
 }
 
 int GdalRasterBand::rasterUInt64(int offsetX, int offsetY, int xSize, int ySize, void* buffer, int xBufferSize, int yBufferSize) {
 	GDALRasterBand* rasterBand = (GDALRasterBand*)rasterBand_;
-	std::unique_lock lock(mutex_);
+	std::unique_lock<std::mutex> lock;
+	if (!rasterBand->GetDataset()->IsThreadSafe(GDAL_OF_RASTER)) {
+		lock = std::unique_lock(mutex_);
+	}
 
 	return rasterBand->RasterIO(GF_Read, offsetX, offsetY, xSize, ySize, buffer, xBufferSize, yBufferSize, GDT_UInt64, 0, 0);
 }
 
 int GdalRasterBand::rasterFloat(int offsetX, int offsetY, int xSize, int ySize, void* buffer, int xBufferSize, int yBufferSize) {
 	GDALRasterBand* rasterBand = (GDALRasterBand*)rasterBand_;
-	std::unique_lock lock(mutex_);
+	std::unique_lock<std::mutex> lock;
+	if (!rasterBand->GetDataset()->IsThreadSafe(GDAL_OF_RASTER)) {
+		lock = std::unique_lock(mutex_);
+	}
 
 	return rasterBand->RasterIO(GF_Read, offsetX, offsetY, xSize, ySize, buffer, xBufferSize, yBufferSize, GDT_Float32, 0, 0);
 }
 
 int GdalRasterBand::rasterDouble(int offsetX, int offsetY, int xSize, int ySize, void* buffer, int xBufferSize, int yBufferSize) {
 	GDALRasterBand* rasterBand = (GDALRasterBand*)rasterBand_;
-	std::unique_lock lock(mutex_);
+	std::unique_lock<std::mutex> lock;
+	if (!rasterBand->GetDataset()->IsThreadSafe(GDAL_OF_RASTER)) {
+		lock = std::unique_lock(mutex_);
+	}
 
 	return rasterBand->RasterIO(GF_Read, offsetX, offsetY, xSize, ySize, buffer, xBufferSize, yBufferSize, GDT_Float64, 0, 0);
 }
 
 int GdalRasterBand::raster(int offsetX, int offsetY, int xSize, int ySize, void* buffer, int xBufferSize, int yBufferSize) {
 	GDALRasterBand* rasterBand = (GDALRasterBand*)rasterBand_;
-	std::unique_lock lock(mutex_);
+	std::unique_lock<std::mutex> lock;
+	if (!rasterBand->GetDataset()->IsThreadSafe(GDAL_OF_RASTER)) {
+		lock = std::unique_lock(mutex_);
+	}
 
 	return rasterBand->RasterIO(GF_Write, offsetX, offsetY, xSize, ySize, buffer, xBufferSize, yBufferSize, ints64_ ? GDT_UInt32 : GDT_Byte, 0, 0);
 }
@@ -93,9 +114,15 @@ std::optional<double> GdalRasterBand::getNoDataValue() {
 	return hasNoData ? std::optional<double>(noDataValue) : std::nullopt;
 }
 
+int GdalRasterBand::setNoDataValue(double value) {
+	GDALRasterBand* rasterBand = (GDALRasterBand*)rasterBand_;
+
+	return rasterBand->SetNoDataValue(value);
+}
+
 GdalTiffReader::GdalTiffReader(const std::string& fileName) {
 	GDALAllRegister();
-	gdalDataset_ = GDALOpen(fileName.data(), GA_ReadOnly);
+	gdalDataset_ = GDALDataset::Open(fileName.data(), GDAL_OF_READONLY | GDAL_OF_RASTER | GDAL_OF_THREAD_SAFE);
 	GDALDataset* poDataset = (GDALDataset*)gdalDataset_;
 }
 

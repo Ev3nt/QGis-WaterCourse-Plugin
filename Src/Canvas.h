@@ -49,9 +49,9 @@ public:
 private:
 	Grid<T> grid_;
 
-	int index_;
-	int height_;
-	int offsetY_;
+	int index_ = 0;
+	int height_ = 0;
+	int offsetY_ = 0;
 
 	int changesCounter_ = 0;
 };
@@ -59,6 +59,8 @@ private:
 template<typename T>
 class Canvas {
 public:
+	typedef std::shared_ptr<Slot<T>> SLOT;
+
 	Canvas(RASTER_BAND band, bool dumping = false);
 	~Canvas();
 
@@ -69,8 +71,8 @@ public:
 
 private:
 	RASTER_BAND band_;
-	std::vector<std::shared_ptr<Slot<T>>> slots_;
-	std::map<int, std::shared_ptr<Slot<T>>> users_;
+	std::vector<SLOT> slots_;
+	std::map<int, SLOT> users_;
 
 	int tileWidth_ = 0;
 	int tileHeight_ = 0;

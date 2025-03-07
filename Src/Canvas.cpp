@@ -69,8 +69,8 @@ DataHolder<T> Canvas<T>::at(int x, int y, int index) {
 	int tileIndex = y / step_;
 	int offsetY = tileIndex * step_;
 
-	std::shared_ptr<Slot<T>> result;
-	std::shared_ptr<Slot<T>> freeSlot;
+	SLOT result;
+	SLOT freeSlot;
 
 	auto& picked = users_[index];
 
@@ -80,7 +80,7 @@ DataHolder<T> Canvas<T>::at(int x, int y, int index) {
 
 		for (auto& slot : slots_) {
 			if (slot->getIndex() == tileIndex) {
-				result = slot;
+				picked = result = slot;
 
 				break;
 			}
@@ -94,20 +94,20 @@ DataHolder<T> Canvas<T>::at(int x, int y, int index) {
 	}
 
 	if (!result) {
-		std::lock_guard lock(slotsMtx_);
+		{
+			std::lock_guard lock(slotsMtx_);
 
-		if (!freeSlot) {
-			freeSlot = std::make_shared<Slot<T>>();
-			slots_.push_back(freeSlot);
-			/*std::cout << "Created slot! " << "Index: " << index << " Step: " << step_ << " Thread ID: " << std::this_thread::get_id() << std::endl;
-			std::cout << "TileIndex: " << tileIndex << " y: " << y << " / Step: " << step_ << std::endl;*/
-		}
-		else if (dumping_ && freeSlot->getChangesCount()) {
-			//std::cout << "Raster! " << tileIndex << " " << step_ << " " << y << " Thread ID: " << std::this_thread::get_id() << std::endl;
-			band_->raster(0, freeSlot->getOffsetY(), tileWidth_, freeSlot->getHeight(), freeSlot->getGrid().data(), tileWidth_, freeSlot->getHeight());
+			if (!freeSlot) {
+				freeSlot = std::make_shared<Slot<T>>();
+				slots_.push_back(freeSlot);
+			}
+			else if (dumping_ && freeSlot->getChangesCount()) {
+				band_->raster(0, freeSlot->getOffsetY(), tileWidth_, freeSlot->getHeight(), freeSlot->getGrid().data(), tileWidth_, freeSlot->getHeight());
+			}
+
+			picked = result = freeSlot;
 		}
 
-		result = freeSlot;
 		result->setIndex(tileIndex);
 		result->setOffsetY(offsetY);
 
@@ -115,7 +115,6 @@ DataHolder<T> Canvas<T>::at(int x, int y, int index) {
 
 		int height = min(tileHeight_ - offsetY, step_);
 		if (grid.getWidth() != tileWidth_ || grid.getHeight() != height) {
-			//std::cout << "Resized " << " Thread ID: " << std::this_thread::get_id() << std::endl;
 			grid.resize(tileWidth_, height);
 			result->setHeight(height);
 		}
@@ -123,7 +122,6 @@ DataHolder<T> Canvas<T>::at(int x, int y, int index) {
 		auto& type = typeid(T);
 		if (type == typeid(float)) {
 			band_->rasterFloat(0, offsetY, tileWidth_, height, grid.data(), tileWidth_, height);
-			//std::cout << "Readen " << " Thread ID: " << std::this_thread::get_id() << std::endl;
 		}
 		else if (type == typeid(unsigned char)) {
 			band_->rasterByte(0, offsetY, tileWidth_, height, grid.data(), tileWidth_, height);
@@ -134,19 +132,7 @@ DataHolder<T> Canvas<T>::at(int x, int y, int index) {
 		else if (type == typeid(uint64_t)) {
 			band_->rasterUInt64(0, offsetY, tileWidth_, height, grid.data(), tileWidth_, height);
 		}
-
-		picked = result;
 	}
-
-	//if (picked != result) {
-	//	/*if (dumping_ && picked.use_count() == 2 && picked->getChangesCount()) {
-	//		std::cout << "Raster! " << num << " " << step_ << " " << y << std::endl;
-	//		bands_[picked->getPos()]->raster(0, picked->getOffsetY(), tileWidth_, picked->getHeight(), picked->getGrid().data(), tileWidth_, picked->getHeight());
-	//		picked->getChangesCount() = 0;
-	//	}*/
-
-	//	picked = result;
-	//}
 
 	return DataHolder<T>(picked->getGrid().at(x, y - offsetY), &picked->getChangesCount());
 }

@@ -20,6 +20,7 @@ public:
 	virtual int getBand() = 0;
 
 	virtual std::optional<double> getNoDataValue() = 0;
+	virtual int setNoDataValue(double value) = 0;
 };
 
 class IGeoTiffReader {

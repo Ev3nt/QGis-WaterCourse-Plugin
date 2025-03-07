@@ -25,6 +25,7 @@ public:
 	int getBand();
 
 	std::optional<double> getNoDataValue();
+	int setNoDataValue(double value);
 
 private:
 	std::mutex mutex_;

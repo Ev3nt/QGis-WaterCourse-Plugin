@@ -3,6 +3,8 @@
 #include "Plugin.h"
 
 #include <filesystem>
+#include <fstream>
+#include <barrier>
 
 #include "Timer.h"
 
@@ -34,85 +36,99 @@ void Plugin::process(const std::string& name, float scale, int threadsCount) {
 	std::cout << "Has nodata: " << (noData_ ? "yes (" + std::to_string(noData_.value()) + ")" : "no") << std::endl;
 
 	std::filesystem::path temp_file = /*std::filesystem::temp_directory_path() /*/ "D:\\Tiles\\Test\\temp_tif_file.tif";
+	std::string projection = terrainReader->getProjection();
+	std::cout << "Projection: " << projection << std::endl;
 
 	GEOTIFF_READER directionsReader(new GdalTiffReader(temp_file.string(), width, height, 1));
-	directionsReader->setProjection(terrainReader->getProjection());
+	directionsReader->setProjection(projection);
 	directionsReader->setGeoTransform(terrainReader->getGeoTransform());
 
 	RASTER_BAND directionsBand(directionsReader->getRasterBand(1));
 	CANVAS_FLOAT terrain(new Canvas<float>(terrainBand));
 	CANVAS_BYTE directions(new Canvas<uint8_t>(directionsBand, true));
+	directionsBand->setNoDataValue(255);
+
+	std::string sourcesFileName = "D:\\Tiles\\Test\\temp_srcs_file.srcs";
+	std::fstream sources(sourcesFileName, std::ios::binary | std::ios::out);
+
+	std::vector<std::thread> threads;
+	threads.reserve(threadsCount);
 
 	Timer timer;
 
-	std::vector<std::thread> threads;
-	for (int i = 0; i < threadsCount; i++) {
-		threads.push_back(std::move(std::thread([this, terrain, directions, width, height, i, threadsCount]() {
-			try {
-				directionProcess(terrain, directions, width, height, i, threadsCount);
-			}
-			catch (const std::exception& exception) {
-				std::cout << exception.what() << std::endl;
-			}
-			})));
-	}
+	{
+		Timer flowTimer;
 
-	for (auto& thread : threads) {
-		if (thread.joinable()) {
-			thread.join();
+		for (int i = 0; i < threadsCount; i++) {
+			threads.emplace_back([this, &terrain, &directions, width, height, i, &sources, threadsCount]() {
+				try {
+					directionProcess(terrain, directions, width, height, i, sources, threadsCount);
+				}
+				catch (const std::exception& exception) {
+					std::cout << "Exception: " << exception.what() << std::endl;
+				}
+				});
 		}
+
+		for (auto& thread : threads) {
+			if (thread.joinable()) {
+				thread.join();
+			}
+		}
+
+		sources.open(sourcesFileName, std::ios::binary | std::ios::in);
+
+		std::cout << "---------------- FlowDirections Finished! ----------------" << std::endl;
+		std::cout << "Spent time: " << flowTimer.elapsedSeconds() << "s" << std::endl;
 	}
 
 	std::cout << "---------------- Finished ----------------" << std::endl;
 	std::cout << "Spent time: " << timer.elapsedSeconds() << "s" << std::endl;
+	std::cout << std::endl;
 }
 
-void Plugin::directionProcess(CANVAS_FLOAT terrain, CANVAS_BYTE directions, int width, int height, int index, int threadsCount) {
-	static std::mutex mutex;
+void Plugin::directionProcess(CANVAS_FLOAT& terrain, CANVAS_BYTE& directions, int width, int height, int index, std::fstream& sources, int threadsCount) {
+	static std::barrier syncPoint(threadsCount);
+
+	static std::atomic_bool interrupted = false;
+	static std::atomic_int counter;
+
 	int heightPerThread = height / threadsCount;
 	int residualHeight = height - (heightPerThread * threadsCount);
-	int beginHeight = heightPerThread * index;
+	int rowOffset = heightPerThread * index;
+	std::pair<int, int> source;
+
+	counter = 0;
+
+	int tileHeight = terrain->getHeight();
+	progressCallback_ = [tileHeight]() -> int {
+			return int(counter.load() / float(tileHeight) * 100);
+		};
 
 	height = heightPerThread;
 	if (index == threadsCount - 1) {
 		height += residualHeight;
 	}
 
-	{
-		std::unique_lock lock(mutex);
-		std::cout << "Thread ID: " << index << " Height: " << height << " Begin Height: " << beginHeight << std::endl;
-	}
+	std::cout << "Thread Created ID: " << index << " (0x" << std::setfill('0') << std::setw(8) << std::right << std::this_thread::get_id() << ")\t Row Offset: " << rowOffset << "\t Height: " << height << std::endl;
 
-	for (int j = beginHeight; j < beginHeight + height; j++) {
-		for (int i = 0; i < width; i++) {
-			float from = terrain->at(i, j, index);
-			auto dir = directions->at(i, j, index);
-
-			if (noData_ && noData_ == from) {
-				dir = 1;
-			}
-			else {
-				dir = 3;
-			}
-		}
-	}
-
-	/*if (noData_ && noData_ == from) {
-		return;
-	}*/
-
-	/*float precision = 0.001f;
+	float precision = 0.001f;
 	float border = 0.f;
-	for (int j = beginHeight; j < beginHeight + height; j++) {
+	for (int j = rowOffset; j < rowOffset + height; j++) {
 		for (int i = 0; i < width; i++) {
-			float from = terrain->at(i, j, index);
-
-			if (noData_ && noData_ == from) {
-				continue;
+			if (interrupted.load(std::memory_order_relaxed)) {
+				throw std::exception();
 			}
 
+			float from = terrain->at(i, j, index);
 			auto dir = directions->at(i, j, index);
 			float minSlope = 0;
+
+			if (noData_ == from) {
+				dir = 255;
+
+				continue;
+			}
 
 			for (int dirY = 0; dirY < 3; dirY++) {
 				for (int dirX = 0; dirX < 3; dirX++) {
@@ -125,7 +141,7 @@ void Plugin::directionProcess(CANVAS_FLOAT terrain, CANVAS_BYTE directions, int 
 
 					auto _to = terrain->at(curX, curY, -index);
 					float to = 0;
-					if (!_to.valid() || (noData_ && _to.data() == noData_)) {
+					if (!_to.valid() || (_to.data() == noData_)) {
 						border = from - precision;
 						to = border;
 					}
@@ -148,12 +164,81 @@ void Plugin::directionProcess(CANVAS_FLOAT terrain, CANVAS_BYTE directions, int 
 			}
 
 			if (!minSlope) {
-				throw std::runtime_error("Unexpected direction, min slope equals zero.");
+				/*interrupted = true;
+
+				throw std::runtime_error("Unexpected direction, min slope equals zero.");*/
+			}
+		}
+	
+		counter.fetch_add(1, std::memory_order_relaxed);
+		//counter++;
+	}
+
+	/*syncPoint.arrive_and_wait();
+
+	{
+		std::unique_lock lock(mutex);
+
+		std::cout << "Thread ID: " << index << " Looking for sources..." << std::endl;
+	}
+
+	for (int j = rowOffset; j < rowOffset + height; j++) {
+		for (int i = 0; i < width; i++) {
+			int enters = 0;
+			auto dir = directions->at(i, j, index);
+
+			if (dir == 255) {
+				continue;
+			}
+
+			for (int dirY = 0; dirY < 3; dirY++) {
+				for (int dirX = 0; dirX < 3; dirX++) {
+					if (dirX == 1 && dirY == 1) {
+						continue;
+					}
+
+					int curX = i + dirX - 1;
+					int curY = j + dirY - 1;
+
+					auto curDir = directions->at(curX, curY, -index);
+					if (!curDir.valid()) {
+						continue;
+					}
+
+					if (dirY * 3 + dirX == 9 - abs(*(char*)&curDir.data())) {
+						enters++;
+					}
+				}
+			}
+
+			if (!enters) {
+				std::lock_guard lock(mutex);
+
+				source = { i, j };
+				sources.write((char*)&source, sizeof(source));
+			}
+			else if (enters > 1) {
+				dir = -dir;
 			}
 		}
 	}*/
+
+	sources.close();
+}
+
+int Plugin::getProgress() {
+	return progressCallback_ ? progressCallback_() : 0;
 }
 
 EXPORT_API void Process(const char* name, float scale, int threadsCount) {
-	Plugin::getInstance().process(name, scale, threadsCount);
+	try {
+		Plugin::getInstance().process(name, scale, threadsCount);
+	}
+	catch (const std::exception& exception) {
+		std::cout << "Exception: " << exception.what() << std::endl;
+	}
+}
+
+EXPORT_API int GetProgress() {
+	return Plugin::getInstance().getProgress();
 }
