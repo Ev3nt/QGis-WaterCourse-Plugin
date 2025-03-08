@@ -4,8 +4,8 @@
 
 #include <filesystem>
 #include <fstream>
-#include <barrier>
 
+#include "Barrier.h"
 #include "Timer.h"
 
 void Plugin::process(const std::string& name, float scale, int threadsCount) {
@@ -46,26 +46,36 @@ void Plugin::process(const std::string& name, float scale, int threadsCount) {
 	RASTER_BAND directionsBand(directionsReader->getRasterBand(1));
 	CANVAS_FLOAT terrain(new Canvas<float>(terrainBand));
 	CANVAS_BYTE directions(new Canvas<uint8_t>(directionsBand, true));
-	directionsBand->setNoDataValue(255);
+	directionsBand->setNoDataValue(50);
 
 	std::string sourcesFileName = "D:\\Tiles\\Test\\temp_srcs_file.srcs";
-	std::fstream sources(sourcesFileName, std::ios::binary | std::ios::out);
-
-	std::vector<std::thread> threads;
-	threads.reserve(threadsCount);
+	bool interrupted = false;
 
 	Timer timer;
 
 	{
+		std::vector<std::thread> threads;
+		threads.reserve(threadsCount);
+
+		std::ofstream sources(sourcesFileName, std::ios::binary | std::ios::out);
+
 		Timer flowTimer;
 
 		for (int i = 0; i < threadsCount; i++) {
-			threads.emplace_back([this, &terrain, &directions, width, height, i, &sources, threadsCount]() {
+			threads.emplace_back([this, &terrain, &directions, width, height, i, &sources, threadsCount, &interrupted]() {
 				try {
 					directionProcess(terrain, directions, width, height, i, sources, threadsCount);
 				}
-				catch (const std::exception& exception) {
-					std::cout << "Exception: " << exception.what() << std::endl;
+				catch (const std::runtime_error& exception) {
+					progressCallback_ = [] { return 0; };
+
+					std::cout << "<b>---------------- FlowDirections Failed! ----------------</b>" << std::endl;
+					std::cout << "<b>Exception:</b> " << exception.what() << std::endl;
+
+					interrupted = true;
+				}
+				catch (...) {
+
 				}
 				});
 		}
@@ -76,7 +86,9 @@ void Plugin::process(const std::string& name, float scale, int threadsCount) {
 			}
 		}
 
-		sources.open(sourcesFileName, std::ios::binary | std::ios::in);
+		if (interrupted) {
+			return;
+		}
 
 		std::cout << "---------------- FlowDirections Finished! ----------------" << std::endl;
 		std::cout << "Spent time: " << flowTimer.elapsedSeconds() << "s" << std::endl;
@@ -87,22 +99,23 @@ void Plugin::process(const std::string& name, float scale, int threadsCount) {
 	std::cout << std::endl;
 }
 
-void Plugin::directionProcess(CANVAS_FLOAT& terrain, CANVAS_BYTE& directions, int width, int height, int index, std::fstream& sources, int threadsCount) {
-	static std::barrier syncPoint(threadsCount);
-
-	static std::atomic_bool interrupted = false;
+void Plugin::directionProcess(CANVAS_FLOAT& terrain, CANVAS_BYTE& directions, int width, int height, int index, std::ofstream& sources, int threadsCount) {
+	static Barrier syncPoint;
+	static std::mutex sourcesMutex;
+	static std::atomic_bool interrupted;
 	static std::atomic_int counter;
 
 	int heightPerThread = height / threadsCount;
 	int residualHeight = height - (heightPerThread * threadsCount);
 	int rowOffset = heightPerThread * index;
-	std::pair<int, int> source;
+	Source source;
 
+	interrupted = false;
 	counter = 0;
 
 	int tileHeight = terrain->getHeight();
 	progressCallback_ = [tileHeight]() -> int {
-			return int(counter.load() / float(tileHeight) * 100);
+			return int(counter.load() / float(tileHeight * 2) * 100);
 		};
 
 	height = heightPerThread;
@@ -125,7 +138,7 @@ void Plugin::directionProcess(CANVAS_FLOAT& terrain, CANVAS_BYTE& directions, in
 			float minSlope = 0;
 
 			if (noData_ == from) {
-				dir = 255;
+				dir = 50;
 
 				continue;
 			}
@@ -164,30 +177,29 @@ void Plugin::directionProcess(CANVAS_FLOAT& terrain, CANVAS_BYTE& directions, in
 			}
 
 			if (!minSlope) {
-				/*interrupted = true;
+				interrupted = true;
 
-				throw std::runtime_error("Unexpected direction, min slope equals zero.");*/
+				throw std::runtime_error("Unexpected direction, min slope equals zero. Before trying again, use Fill Sinks.");
 			}
 		}
 	
 		counter.fetch_add(1, std::memory_order_relaxed);
-		//counter++;
 	}
 
-	/*syncPoint.arrive_and_wait();
+	syncPoint.wait(threadsCount, [] { return interrupted.load(std::memory_order_relaxed); });
 
-	{
-		std::unique_lock lock(mutex);
-
-		std::cout << "Thread ID: " << index << " Looking for sources..." << std::endl;
+	if (interrupted.load(std::memory_order_relaxed)) {
+		throw std::exception();
 	}
+
+	std::cout << "Thread ID: " << index << " Looking for sources..." << std::endl;
 
 	for (int j = rowOffset; j < rowOffset + height; j++) {
 		for (int i = 0; i < width; i++) {
 			int enters = 0;
 			auto dir = directions->at(i, j, index);
 
-			if (dir == 255) {
+			if (dir == 50) {
 				continue;
 			}
 
@@ -212,7 +224,7 @@ void Plugin::directionProcess(CANVAS_FLOAT& terrain, CANVAS_BYTE& directions, in
 			}
 
 			if (!enters) {
-				std::lock_guard lock(mutex);
+				std::lock_guard lock(sourcesMutex);
 
 				source = { i, j };
 				sources.write((char*)&source, sizeof(source));
@@ -221,9 +233,9 @@ void Plugin::directionProcess(CANVAS_FLOAT& terrain, CANVAS_BYTE& directions, in
 				dir = -dir;
 			}
 		}
-	}*/
 
-	sources.close();
+		counter.fetch_add(1, std::memory_order_relaxed);
+	}
 }
 
 int Plugin::getProgress() {
@@ -234,8 +246,9 @@ EXPORT_API void Process(const char* name, float scale, int threadsCount) {
 	try {
 		Plugin::getInstance().process(name, scale, threadsCount);
 	}
-	catch (const std::exception& exception) {
-		std::cout << "Exception: " << exception.what() << std::endl;
+	catch (const std::runtime_error& exception) {
+		std::cout << "<b>---------------- FlowDirections Failed! ----------------</b>" << std::endl;
+		std::cout << "<b>Exception:</b> " << exception.what() << std::endl;
 	}
 }
 
