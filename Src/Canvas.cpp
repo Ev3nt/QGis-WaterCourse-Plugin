@@ -61,6 +61,8 @@ Canvas<T>::~Canvas() {
 				band_->raster(0, slot->getOffsetY(), tileWidth_, slot->getHeight(), slot->getGrid().data(), tileWidth_, slot->getHeight());
 			}
 		}
+
+		MessageBox(0, 0, 0, 0);
 	}
 }
 

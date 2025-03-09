@@ -97,10 +97,7 @@ int GdalRasterBand::rasterDouble(int offsetX, int offsetY, int xSize, int ySize,
 
 int GdalRasterBand::raster(int offsetX, int offsetY, int xSize, int ySize, void* buffer, int xBufferSize, int yBufferSize) {
 	GDALRasterBand* rasterBand = (GDALRasterBand*)rasterBand_;
-	std::unique_lock<std::mutex> lock;
-	if (!rasterBand->GetDataset()->IsThreadSafe(GDAL_OF_RASTER)) {
-		lock = std::unique_lock(mutex_);
-	}
+	std::unique_lock lock(mutex_);
 
 	return rasterBand->RasterIO(GF_Write, offsetX, offsetY, xSize, ySize, buffer, xBufferSize, yBufferSize, ints64_ ? GDT_UInt32 : GDT_Byte, 0, 0);
 }
