@@ -62,7 +62,7 @@ Canvas<T>::~Canvas() {
 			}
 		}
 
-		MessageBox(0, 0, 0, 0);
+		band_->computeRasterMinMax(); // Should be optimized
 	}
 }
 
@@ -136,7 +136,7 @@ DataHolder<T> Canvas<T>::at(int x, int y, int index) {
 		}
 	}
 
-	return DataHolder<T>(picked->getGrid().at(x, y - offsetY), &picked->getChangesCount());
+	return DataHolder<T>(picked->getGrid().at(x, y - offsetY), picked.get());
 }
 
 template<typename T>
@@ -150,7 +150,7 @@ int Canvas<T>::getHeight() {
 }
 
 template<typename T>
-DataHolder<T>::DataHolder(T* value, int* counter) : value_(value), counter_(counter) {
+DataHolder<T>::DataHolder(T* value, Slot<T>* slot) : value_(value), slot_(slot) {
 	if (value_) {
 		//std::unique_lock lock(mtx_);
 
@@ -167,13 +167,11 @@ template<typename T>
 T DataHolder<T>::operator=(const T value) {
 	//std::lock_guard lock(mtx_);
 	if (value == previousValue_) {
-		if (counter_) {
-			(*counter_)--;
-		}
+		slot_->changesCounter_--;
 	}
 	else if (value != *value_) {
-		if (counter_ && *value_ == previousValue_) {
-			(*counter_)++;
+		if (*value_ == previousValue_) {
+			slot_->changesCounter_++;
 		}
 	}
 
@@ -186,7 +184,6 @@ template<typename T>
 DataHolder<T>& DataHolder<T>::operator=(const DataHolder<T>& self) {
 	previousValue_ = self.previousValue_;
 	value_ = self.value_;
-	counter_ = self.counter_;
 
 	return *this;
 }
@@ -199,7 +196,7 @@ DataHolder<T>::operator T() {
 }
 
 template<typename T>
-T& DataHolder<T>::data() {
+const T& DataHolder<T>::data() {
 	//std::lock_guard lock(mtx_);
 
 	return *value_;

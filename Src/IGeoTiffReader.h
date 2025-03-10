@@ -21,6 +21,10 @@ public:
 
 	virtual std::optional<double> getNoDataValue() = 0;
 	virtual int setNoDataValue(double value) = 0;
+
+	virtual std::pair<double, double> getRasterMinMax(bool approx) = 0;
+	virtual int setStatistics(double min, double max, double mean, double stdDev) = 0;
+	virtual int computeRasterMinMax() = 0;
 };
 
 class IGeoTiffReader {

@@ -17,6 +17,28 @@ GdalRasterBand::~GdalRasterBand() {
 	//delete (GDALRasterBand*)rasterBand_;
 }
 
+std::pair<double, double> GdalRasterBand::getRasterMinMax(bool approx) {
+	GDALRasterBand* rasterBand = (GDALRasterBand*)rasterBand_;
+	std::pair<double, double> minMax;
+
+	rasterBand->ComputeRasterMinMax(approx, &minMax.first);
+
+	return minMax;
+}
+
+int GdalRasterBand::setStatistics(double min, double max, double mean, double stdDev) {
+	GDALRasterBand* rasterBand = (GDALRasterBand*)rasterBand_;
+
+	return rasterBand->SetStatistics(min, max, mean, stdDev);
+}
+
+int GdalRasterBand::computeRasterMinMax() {
+	GDALRasterBand* rasterBand = (GDALRasterBand*)rasterBand_;
+	auto minMax = getRasterMinMax(false);
+
+	return setStatistics(minMax.first, minMax.second, 0, 0);
+}
+
 int GdalRasterBand::getXSize() {
 	GDALRasterBand* rasterBand = (GDALRasterBand*)rasterBand_;
 

@@ -27,6 +27,10 @@ public:
 	std::optional<double> getNoDataValue();
 	int setNoDataValue(double value);
 
+	std::pair<double, double> getRasterMinMax(bool approx = true);
+	int setStatistics(double min, double max, double mean, double stdDev);
+	int computeRasterMinMax();
+
 private:
 	std::mutex mutex_;
 	void* rasterBand_ = nullptr;

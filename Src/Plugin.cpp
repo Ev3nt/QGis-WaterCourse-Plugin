@@ -47,7 +47,7 @@ void Plugin::process(const std::string& name, float scale, int threadsCount) {
 
 	Timer timer;
 
-	/*{
+	{
 		GEOTIFF_READER directionsReader(new GdalTiffReader(temp_file.string(), width, height, 1));
 		directionsReader->setProjection(projection);
 		directionsReader->setGeoTransform(terrainReader->getGeoTransform());
@@ -96,13 +96,13 @@ void Plugin::process(const std::string& name, float scale, int threadsCount) {
 
 		std::cout << "---------------- FlowDirections Finished! ----------------" << std::endl;
 		std::cout << "Spent time: " << flowTimer.elapsedSeconds() << "s" << std::endl;
-	}*/
+	}
 
 	{
-		/*GEOTIFF_READER directionsReader(new GdalTiffReader(temp_file.string()));
+		GEOTIFF_READER directionsReader(new GdalTiffReader(temp_file.string()));
 
 		RASTER_BAND directionsBand(directionsReader->getRasterBand(1));
-		CANVAS_BYTE directions(new Canvas<uint8_t>(directionsBand));*/
+		CANVAS_BYTE directions(new Canvas<uint8_t>(directionsBand));
 
 		std::filesystem::path result_file = /*std::filesystem::temp_directory_path() /*/ "D:\\Tiles\\Test\\result_tif_file.tif";
 		GEOTIFF_READER accumulationReader(new GdalTiffReader(result_file.string(), width, height, 1, true));
@@ -112,7 +112,7 @@ void Plugin::process(const std::string& name, float scale, int threadsCount) {
 		RASTER_BAND accumaltionBand(accumulationReader->getRasterBand(1));
 		CANVAS_UINT32 accumaltion(new Canvas<uint32_t>(accumaltionBand, true));
 
-		/*std::vector<std::thread> threads;
+		std::vector<std::thread> threads;
 		threads.reserve(threadsCount);
 
 		std::ifstream sources(sourcesFileName, std::ios::binary | std::ios::out);
@@ -128,7 +128,7 @@ void Plugin::process(const std::string& name, float scale, int threadsCount) {
 		std::queue<CHUNK_BORDERS> chunks;
 		std::mutex chunkMutex;
 
-		int chunkSize = 10000000 * sizeof(Source);
+		int chunkSize = 10000 * sizeof(Source);
 
 		std::size_t start = 0;
 		while (start < sourcesFileSize) {
@@ -137,11 +137,9 @@ void Plugin::process(const std::string& name, float scale, int threadsCount) {
 			start = end;
 		}
 
-		Timer flowTimer;*/
+		Timer flowTimer;
 
-		accumaltion->at(0, 1, 1) = 100;
-
-		/*for (int i = 0; i < threadsCount; i++) {
+		for (int i = 0; i < threadsCount; i++) {
 			threads.emplace_back([this, &accumaltion, &directions, i, &sources, threadsCount, &interrupted, &chunks, &chunkMutex, sourcesCount]() {
 				try {
 					while (true) {
@@ -173,9 +171,9 @@ void Plugin::process(const std::string& name, float scale, int threadsCount) {
 
 				}
 				});
-		}*/
+		}
 
-		/*for (auto& thread : threads) {
+		for (auto& thread : threads) {
 			if (thread.joinable()) {
 				thread.join();
 			}
@@ -186,7 +184,7 @@ void Plugin::process(const std::string& name, float scale, int threadsCount) {
 		}
 
 		std::cout << "---------------- FlowAccumulation Finished! ----------------" << std::endl;
-		std::cout << "Spent time: " << flowTimer.elapsedSeconds() << "s" << std::endl;*/
+		std::cout << "Spent time: " << flowTimer.elapsedSeconds() << "s" << std::endl;
 	}
 
 	std::cout << "---------------- Finished ----------------" << std::endl;
@@ -360,21 +358,19 @@ void Plugin::accumulationProcess(CANVAS_UINT32& accumulation, CANVAS_BYTE& direc
 
 	std::cout << "Thread ID: " << index << " (0x" << std::setfill('0') << std::setw(8) << std::right << std::this_thread::get_id() << ")\t Start Point: " << chunk.first << "\t End Point: " << chunk.second << std::endl;
 
-	auto data = accumulation->at(sources[0].x, sources[0].y, index);
-	data = 1;
+	std::cout << sources.size() << std::endl;
 
-	/*for (int i = 0; i < sources.size(); i++) {
-		int x = sources[i].x;
-		int y = sources[i].y;
+	for (const auto source : sources) {
+		int x = source.x;
+		int y = source.y;
 
 		{
 			std::lock_guard lock(writeMutex);
-			auto data = accumulation->at(x, y, index);
-			(data);
+			accumulation->at(x, y, index) = 1;
 		}
 
 		counter.fetch_add(1, std::memory_order_relaxed);
-	}*/
+	}
 }
 
 int Plugin::getProgress() {

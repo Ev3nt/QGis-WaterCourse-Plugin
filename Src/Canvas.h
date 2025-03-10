@@ -9,23 +9,26 @@ typedef std::shared_ptr<IGeoTiffReader> GEOTIFF_READER;
 typedef std::shared_ptr<IRasterBand> RASTER_BAND;
 
 template<typename T>
+class Slot;
+
+template<typename T>
 class DataHolder {
 public:
-	DataHolder(T* value, int* counter = nullptr);
+	DataHolder(T* value, Slot<T>* slot);
 	DataHolder() = default;
 	~DataHolder();
 
 	DataHolder<T>& operator=(const DataHolder<T>& self);
 	T operator=(const T value);
 	operator T();
-	T& data();
+	const T& data();
 
 	bool valid();
 
 private:
 	T previousValue_ = T();
 	T* value_ = nullptr;
-	int* counter_ = nullptr;
+	Slot<T>* slot_;
 };
 
 template<typename T>
@@ -54,6 +57,8 @@ private:
 	int offsetY_ = 0;
 
 	int changesCounter_ = 0;
+
+	friend DataHolder;
 };
 
 template<typename T>
