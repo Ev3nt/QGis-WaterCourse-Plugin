@@ -23,6 +23,11 @@ public:
 		return plugin;
 	}
 
+	int getDirection(int i, int j);
+	void getOffsets(int direction, int* i, int* j);
+	int calculateFlowDirection(CANVAS_FLOAT& terrain, int x, int y, int index);
+	int calculateEnters(CANVAS_BYTE& directions, int x, int y, int index);
+
 	void process(const std::string& name, float scale, int threadsCount);
 
 	int getProgress();
@@ -33,7 +38,8 @@ private:
 	void directionProcess(CANVAS_FLOAT& terrain, CANVAS_BYTE& directions, int width, int height, int index, std::ofstream& sources, int threadsCount);
 	void accumulationProcess(CANVAS_UINT32& accumulation, CANVAS_BYTE& directions, int index, std::ifstream& sources, CHUNK_BORDERS& chunk, int threadsCount, size_t sourcesCount);
 
-	std::optional<double> noData_;
+	std::optional<double> terrainNoData_;
+	std::optional<int> directionNoData_ = 64;
 	float scale_ = 1;
 
 	std::function<int()> progressCallback_;
