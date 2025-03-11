@@ -364,9 +364,76 @@ void Plugin::accumulationProcess(CANVAS_UINT32& accumulation, CANVAS_BYTE& direc
 		int x = source.x;
 		int y = source.y;
 
-		{
-			std::lock_guard lock(writeMutex);
-			accumulation->at(x, y, index) = 1;
+		int x = source.x;
+		int y = source.y;
+		uint32_t value = 1;
+
+		while (true) {
+			auto dir = directions->at(x, y, index);
+
+			if (!dir.valid()) {
+				break;
+			}
+
+			std::unique_lock<std::mutex> lock;
+			auto data = accumulation->at(x, y, index);
+
+			if (!data.valid()) {
+				break;
+			}
+
+			if (*(char*)&dir.data() < 0) {
+				uint32_t tempValue = 0;
+				bool isOwner = true;
+
+				for (int dirY = 0; dirY < 3; dirY++) {
+					for (int dirX = 0; dirX < 3; dirX++) {
+						if (!isOwner) {
+							break;
+						}
+
+						if (dirX == 1 && dirY == 1) {
+							continue;
+						}
+
+						int curX = x + dirX - 1;
+						int curY = y + dirY - 1;
+
+						auto curDir = directions.at(curX, curY, -id);
+						if (!curDir.valid()) {
+							continue;
+						}
+
+						if (abs(*(char*)&curDir.data()) - 1 != 8 - (dirY * 3 + dirX)) {
+							continue;
+						}
+
+						auto tempData = accumulation.at(curX, curY, -id);
+
+						if (!tempData.valid() || tempData == 0) {
+							isOwner = false;
+
+							break;
+						}
+						else {
+							tempValue += tempData;
+						}
+					}
+				}
+
+				if (!isOwner) {
+					break;
+				}
+
+				value = tempValue + 1;
+			}
+
+			data = value++;
+
+			char absDir = abs(*(char*)&dir.data()) - 1;
+
+			x += absDir % 3 - 1;
+			y += absDir / 3 - 1;
 		}
 
 		counter.fetch_add(1, std::memory_order_relaxed);
