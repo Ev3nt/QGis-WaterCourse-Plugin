@@ -96,19 +96,17 @@ DataHolder<T> Canvas<T>::at(int x, int y, int index) {
 	}
 
 	if (!result) {
-		{
-			std::lock_guard lock(slotsMtx_);
+		std::lock_guard lock(slotsMtx_);
 
-			if (!freeSlot) {
-				freeSlot = std::make_shared<Slot<T>>();
-				slots_.push_back(freeSlot);
-			}
-			else if (dumping_ && freeSlot->getChangesCount()) {
-				band_->raster(0, freeSlot->getOffsetY(), tileWidth_, freeSlot->getHeight(), freeSlot->getGrid().data(), tileWidth_, freeSlot->getHeight());
-			}
-
-			picked = result = freeSlot;
+		if (!freeSlot) {
+			freeSlot = std::make_shared<Slot<T>>();
+			slots_.push_back(freeSlot);
 		}
+		else if (dumping_ && freeSlot->getChangesCount()) {
+			band_->raster(0, freeSlot->getOffsetY(), tileWidth_, freeSlot->getHeight(), freeSlot->getGrid().data(), tileWidth_, freeSlot->getHeight());
+		}
+
+		picked = result = freeSlot;
 
 		result->setIndex(tileIndex);
 		result->setOffsetY(offsetY);
