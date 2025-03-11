@@ -9,6 +9,97 @@
 #include "Barrier.h"
 #include "Timer.h"
 
+int Plugin::getDirection(int i, int j) {
+	return i || j ? (i + 1) * 3 + (j + 1) + 1 : 0;
+}
+
+void Plugin::getOffsets(int direction, int* i, int* j) {
+	if (direction) {
+		direction--;
+
+		*i = direction / 3 - 1;
+		*j = direction % 3 - 1;
+	}
+	else {
+		*i = 0;
+		*j = 0;
+	}
+}
+
+int Plugin::calculateFlowDirection(CANVAS_FLOAT& terrain, int x, int y, int index) {
+	float maxSlope = -1;
+	int direction = directionNoData_.value_or(0);
+
+	auto from = terrain->at(x, y, index);
+	if (!terrainNoData_.has_value() || from.data() != terrainNoData_) {
+		direction = 0;
+
+		for (int j = -1; j <= 1; j++) {
+			for (int i = -1; i <= 1; i++) {
+				if (i == 0 && j == 0) {
+					continue;
+				}
+
+				int nx = x + i;
+				int ny = y + j;
+
+				auto to = terrain->at(nx, ny, -index);
+				if (!to.valid() || to.data() == terrainNoData_) {
+					continue;
+				}
+
+				float deltaZ = from - to;
+				if (deltaZ <= 0) {
+					continue;
+				}
+
+				float scale = 1.f;
+				float distance = (abs(nx - x) + abs(ny - y) == 2) ? 1.41f : 1.f;
+				float slope = deltaZ / (distance * scale);
+
+				if (slope > maxSlope) {
+					maxSlope = slope;
+					direction = getDirection(i, j);
+				}
+			}
+		}
+	}
+
+	return direction;
+}
+
+int Plugin::calculateEnters(CANVAS_BYTE& directions, int x, int y, int index) {
+	int noData = directionNoData_.value();
+	int enters = -1;
+
+	auto direction = directions->at(x, y, index);
+	if (direction != noData && direction != 0) {
+		enters = 0;
+
+		for (int j = -1; j <= 1; ++j) {
+			for (int i = -1; i <= 1; ++i) {
+				if (i == 0 && j == 0) {
+					continue;
+				}
+
+				int nx = x + i;
+				int ny = y + j;
+
+				auto neighbour = directions->at(nx, ny, -index);
+				if (!neighbour.valid() || neighbour == noData || direction == 0) {
+					continue;
+				}
+
+				if (abs(neighbour) == getDirection(-i, -j)) {
+					enters++;
+				}
+			}
+		}
+	}
+
+	return enters;
+}
+
 void Plugin::process(const std::string& name, float scale, int threadsCount) {
 	scale_ = scale;
 
@@ -33,8 +124,8 @@ void Plugin::process(const std::string& name, float scale, int threadsCount) {
 	int width = terrainBand->getXSize(), height = terrainBand->getYSize();
 	std::cout << "Raster size: " << width << "x" << height << std::endl;
 
-	noData_ = terrainBand->getNoDataValue();
-	std::cout << "Has nodata: " << (noData_ ? "yes (" + std::to_string(noData_.value()) + ")" : "no") << std::endl;
+	terrainNoData_ = terrainBand->getNoDataValue();
+	std::cout << "Has nodata: " << (terrainNoData_ ? "yes (" + std::to_string(terrainNoData_.value()) + ")" : "no") << std::endl;
 
 	std::filesystem::path temp_file = /*std::filesystem::temp_directory_path() /*/ "D:\\Tiles\\Test\\temp_tif_file.tif";
 	std::string projection = terrainReader->getProjection();
@@ -54,7 +145,7 @@ void Plugin::process(const std::string& name, float scale, int threadsCount) {
 
 		RASTER_BAND directionsBand(directionsReader->getRasterBand(1));
 		CANVAS_BYTE directions(new Canvas<uint8_t>(directionsBand, true));
-		directionsBand->setNoDataValue(50);
+		directionsBand->setNoDataValue(directionNoData_.value());
 
 		std::vector<std::thread> threads;
 		threads.reserve(threadsCount);
@@ -97,6 +188,8 @@ void Plugin::process(const std::string& name, float scale, int threadsCount) {
 		std::cout << "---------------- FlowDirections Finished! ----------------" << std::endl;
 		std::cout << "Spent time: " << flowTimer.elapsedSeconds() << "s" << std::endl;
 	}
+
+	return;
 
 	{
 		GEOTIFF_READER directionsReader(new GdalTiffReader(temp_file.string()));
@@ -218,62 +311,13 @@ void Plugin::directionProcess(CANVAS_FLOAT& terrain, CANVAS_BYTE& directions, in
 
 	std::cout << "Thread Created ID: " << index << " (0x" << std::setfill('0') << std::setw(8) << std::right << std::this_thread::get_id() << ")\t Row Offset: " << rowOffset << "\t Height: " << height << std::endl;
 
-	float precision = 0.001f;
-	float border = 0.f;
 	for (int j = rowOffset; j < rowOffset + height; j++) {
 		for (int i = 0; i < width; i++) {
 			if (interrupted.load(std::memory_order_relaxed)) {
 				throw std::exception();
 			}
-
-			float from = terrain->at(i, j, index);
-			auto dir = directions->at(i, j, index);
-			float minSlope = 0;
-
-			if (noData_ == from) {
-				dir = 50;
-
-				continue;
-			}
-
-			for (int dirY = 0; dirY < 3; dirY++) {
-				for (int dirX = 0; dirX < 3; dirX++) {
-					if (dirX == 1 && dirY == 1) {
-						continue;
-					}
-
-					int curX = i + dirX - 1;
-					int curY = j + dirY - 1;
-
-					auto _to = terrain->at(curX, curY, -index);
-					float to = 0;
-					if (!_to.valid() || (_to.data() == noData_)) {
-						border = from - precision;
-						to = border;
-					}
-					else {
-						to = _to;
-					}
-
-					float slope = scale_;
-
-					if (!(dirX % 2) && !(dirY % 2)) {
-						slope *= 1.41f;
-					}
-
-					slope = (to - from) / slope;
-					if (slope < minSlope) {
-						minSlope = slope;
-						dir = dirY * 3 + dirX + 1;
-					}
-				}
-			}
-
-			if (!minSlope) {
-				//interrupted = true;
-
-				//throw std::runtime_error("Unexpected direction, min slope equals zero. Before trying again, use Fill Sinks.");
-			}
+			
+			directions->at(i, j, index) = calculateFlowDirection(terrain, i, j, index);
 		}
 	
 		counter.fetch_add(1, std::memory_order_relaxed);
@@ -289,32 +333,8 @@ void Plugin::directionProcess(CANVAS_FLOAT& terrain, CANVAS_BYTE& directions, in
 
 	for (int j = rowOffset; j < rowOffset + height; j++) {
 		for (int i = 0; i < width; i++) {
-			int enters = 0;
-			auto dir = directions->at(i, j, index);
-
-			if (dir == 50) {
-				continue;
-			}
-
-			for (int dirY = 0; dirY < 3; dirY++) {
-				for (int dirX = 0; dirX < 3; dirX++) {
-					if (dirX == 1 && dirY == 1) {
-						continue;
-					}
-
-					int curX = i + dirX - 1;
-					int curY = j + dirY - 1;
-
-					auto curDir = directions->at(curX, curY, -index);
-					if (!curDir.valid()) {
-						continue;
-					}
-
-					if (dirY * 3 + dirX == 9 - abs(*(char*)&curDir.data())) {
-						enters++;
-					}
-				}
-			}
+			auto direction = directions->at(i, j, index);
+			int enters = calculateEnters(directions, i, j, index);
 
 			if (!enters) {
 				std::lock_guard lock(sourcesMutex);
@@ -323,7 +343,7 @@ void Plugin::directionProcess(CANVAS_FLOAT& terrain, CANVAS_BYTE& directions, in
 				sources.write((char*)&source, sizeof(source));
 			}
 			else if (enters > 1) {
-				dir = -dir;
+				direction = -direction;
 			}
 		}
 
@@ -364,8 +384,6 @@ void Plugin::accumulationProcess(CANVAS_UINT32& accumulation, CANVAS_BYTE& direc
 		int x = source.x;
 		int y = source.y;
 
-		int x = source.x;
-		int y = source.y;
 		uint32_t value = 1;
 
 		while (true) {
@@ -375,16 +393,18 @@ void Plugin::accumulationProcess(CANVAS_UINT32& accumulation, CANVAS_BYTE& direc
 				break;
 			}
 
+			int direction = *(char*)&dir.data();
+			char absDir = abs(incDir) - 1;
+
 			std::unique_lock<std::mutex> lock;
+			
 			auto data = accumulation->at(x, y, index);
 
-			if (!data.valid()) {
-				break;
-			}
-
-			if (*(char*)&dir.data() < 0) {
+			if (incDir < 0) {
 				uint32_t tempValue = 0;
 				bool isOwner = true;
+
+				lock = std::unique_lock(writeMutex);
 
 				for (int dirY = 0; dirY < 3; dirY++) {
 					for (int dirX = 0; dirX < 3; dirX++) {
@@ -399,7 +419,7 @@ void Plugin::accumulationProcess(CANVAS_UINT32& accumulation, CANVAS_BYTE& direc
 						int curX = x + dirX - 1;
 						int curY = y + dirY - 1;
 
-						auto curDir = directions.at(curX, curY, -id);
+						auto curDir = directions->at(curX, curY, -index);
 						if (!curDir.valid()) {
 							continue;
 						}
@@ -408,7 +428,7 @@ void Plugin::accumulationProcess(CANVAS_UINT32& accumulation, CANVAS_BYTE& direc
 							continue;
 						}
 
-						auto tempData = accumulation.at(curX, curY, -id);
+						auto tempData = accumulation->at(curX, curY, -index);
 
 						if (!tempData.valid() || tempData == 0) {
 							isOwner = false;
@@ -429,8 +449,6 @@ void Plugin::accumulationProcess(CANVAS_UINT32& accumulation, CANVAS_BYTE& direc
 			}
 
 			data = value++;
-
-			char absDir = abs(*(char*)&dir.data()) - 1;
 
 			x += absDir % 3 - 1;
 			y += absDir / 3 - 1;
