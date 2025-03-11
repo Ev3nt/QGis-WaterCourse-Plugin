@@ -189,8 +189,6 @@ void Plugin::process(const std::string& name, float scale, int threadsCount) {
 		std::cout << "Spent time: " << flowTimer.elapsedSeconds() << "s" << std::endl;
 	}
 
-	return;
-
 	{
 		GEOTIFF_READER directionsReader(new GdalTiffReader(temp_file.string()));
 
@@ -387,56 +385,54 @@ void Plugin::accumulationProcess(CANVAS_UINT32& accumulation, CANVAS_BYTE& direc
 		uint32_t value = 1;
 
 		while (true) {
-			auto dir = directions->at(x, y, index);
+			auto neighbourHolder = directions->at(x, y, index);
 
-			if (!dir.valid()) {
+			if (!neighbourHolder.valid()) {
 				break;
 			}
 
-			int direction = *(char*)&dir.data();
-			char absDir = abs(incDir) - 1;
+			int direction = *(char*)&neighbourHolder.data();
 
 			std::unique_lock<std::mutex> lock;
 			
 			auto data = accumulation->at(x, y, index);
 
-			if (incDir < 0) {
-				uint32_t tempValue = 0;
+			if (direction < 0) {
 				bool isOwner = true;
 
 				lock = std::unique_lock(writeMutex);
 
-				for (int dirY = 0; dirY < 3; dirY++) {
-					for (int dirX = 0; dirX < 3; dirX++) {
+				for (int j = -1; j <= 1; j++) {
+					for (int i = -1; i <= 1; i++) {
 						if (!isOwner) {
 							break;
 						}
 
-						if (dirX == 1 && dirY == 1) {
+						if (i == 0 && j == 0) {
 							continue;
 						}
 
-						int curX = x + dirX - 1;
-						int curY = y + dirY - 1;
+						int nx = x + i;
+						int ny = y + j;
 
-						auto curDir = directions->at(curX, curY, -index);
-						if (!curDir.valid()) {
+						auto neighbourDirection = directions->at(nx, ny, -index);
+						if (!neighbourDirection.valid()) {
 							continue;
 						}
 
-						if (abs(*(char*)&curDir.data()) - 1 != 8 - (dirY * 3 + dirX)) {
+						if (abs(*(char*)&neighbourDirection.data()) != getDirection(-i, -j)) {
 							continue;
 						}
 
-						auto tempData = accumulation->at(curX, curY, -index);
+						auto neighbour = accumulation->at(nx, ny, -index);
 
-						if (!tempData.valid() || tempData == 0) {
+						if (neighbour == 0) {
 							isOwner = false;
 
 							break;
 						}
 						else {
-							tempValue += tempData;
+							value += neighbour;
 						}
 					}
 				}
@@ -445,13 +441,16 @@ void Plugin::accumulationProcess(CANVAS_UINT32& accumulation, CANVAS_BYTE& direc
 					break;
 				}
 
-				value = tempValue + 1;
+				value++;
 			}
 
 			data = value++;
 
-			x += absDir % 3 - 1;
-			y += absDir / 3 - 1;
+			int i, j;
+			getOffsets(direction, &i, &j);
+
+			x += i;
+			y += j;
 		}
 
 		counter.fetch_add(1, std::memory_order_relaxed);

@@ -64,7 +64,7 @@ int GdalRasterBand::rasterByte(int offsetX, int offsetY, int xSize, int ySize, v
 		lock = std::unique_lock(mutex_);
 	}
 
-	return rasterBand->RasterIO(GF_Read, offsetX, offsetY, xSize, ySize, buffer, xBufferSize, yBufferSize, GDT_Byte, 0, 0);
+	return rasterBand->RasterIO(GF_Read, offsetX, offsetY, xSize, ySize, buffer, xBufferSize, yBufferSize, GDT_Int8, 0, 0);
 }
 
 int GdalRasterBand::rasterInt(int offsetX, int offsetY, int xSize, int ySize, void* buffer, int xBufferSize, int yBufferSize) {
@@ -121,7 +121,7 @@ int GdalRasterBand::raster(int offsetX, int offsetY, int xSize, int ySize, void*
 	GDALRasterBand* rasterBand = (GDALRasterBand*)rasterBand_;
 	std::unique_lock lock(mutex_);
 
-	return rasterBand->RasterIO(GF_Write, offsetX, offsetY, xSize, ySize, buffer, xBufferSize, yBufferSize, ints64_ ? GDT_UInt32 : GDT_Byte, 0, 0);
+	return rasterBand->RasterIO(GF_Write, offsetX, offsetY, xSize, ySize, buffer, xBufferSize, yBufferSize, ints64_ ? GDT_UInt32 : GDT_Int8, 0, 0);
 }
 
 std::optional<double> GdalRasterBand::getNoDataValue() {
