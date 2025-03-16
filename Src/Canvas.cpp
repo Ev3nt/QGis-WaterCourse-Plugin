@@ -43,14 +43,18 @@ int& Slot<T>::getChangesCount() {
 }
 
 template<typename T>
-Canvas<T>::Canvas(RASTER_BAND band, bool dumping) : band_(band), dumping_(dumping) {
+Canvas<T>::Canvas(RASTER_BAND band, bool rareLocking, bool dumping) : band_(band), rareLocking_(rareLocking), dumping_(dumping) {
 	if (!tileWidth_) {
 		tileWidth_ = band->getXSize();
 		tileHeight_ = band->getYSize();
 	}
 
-	step_ = (100 * 1024 * 1024) / (tileWidth_ * sizeof(T)) / 3;
-	//step_ = 1000;
+	step_ = (100 * 1024 * 1024) / (tileWidth_ * sizeof(T)); // 10MB
+	
+	//MEMORYSTATUSEX memory;
+	//GlobalMemoryStatusEx(&memory);
+
+	//slotLimit_ = (4ll * 1024 * 1024 * 1024 /*memory.ullAvailPhys * 0.8*/) / (tileWidth_ * sizeof(T) * step_);
 }
 
 template<typename T>
@@ -76,9 +80,16 @@ DataHolder<T> Canvas<T>::at(int x, int y, int index) {
 
 	auto& picked = users_[index];
 
-	if (!picked || picked->getIndex() != tileIndex)
-	{
-		std::lock_guard lock(slotsMtx_);
+	std::unique_lock<Spinlock> lock;
+
+	if (!rareLocking_) {
+		lock = std::unique_lock(slotsMtx_);
+	}
+
+	if (!picked || picked->getIndex() != tileIndex) {
+		if (rareLocking_) {
+			lock = std::unique_lock(slotsMtx_);
+		}
 
 		for (auto& slot : slots_) {
 			if (slot->getIndex() == tileIndex) {
@@ -96,8 +107,6 @@ DataHolder<T> Canvas<T>::at(int x, int y, int index) {
 	}
 
 	if (!result) {
-		std::lock_guard lock(slotsMtx_);
-
 		if (!freeSlot) {
 			freeSlot = std::make_shared<Slot<T>>();
 			slots_.push_back(freeSlot);
@@ -123,7 +132,7 @@ DataHolder<T> Canvas<T>::at(int x, int y, int index) {
 		if (type == typeid(float)) {
 			band_->rasterFloat(0, offsetY, tileWidth_, height, grid.data(), tileWidth_, height);
 		}
-		else if (type == typeid(unsigned char)) {
+		else if (type == typeid(int8_t)) {
 			band_->rasterByte(0, offsetY, tileWidth_, height, grid.data(), tileWidth_, height);
 		}
 		else if (type == typeid(uint32_t)) {
@@ -207,19 +216,22 @@ bool DataHolder<T>::valid() {
 
 
 template class DataHolder<float>;
-template class DataHolder<unsigned char>;
+template class DataHolder<uint8_t>;
+template class DataHolder<int8_t>;
 template class DataHolder<uint64_t>;
 template class DataHolder<uint32_t>;
 template class DataHolder<double>;
 
 template class Slot<float>;
-template class Slot<unsigned char>;
+template class Slot<uint8_t>;
+template class Slot<int8_t>;
 template class Slot<uint64_t>;
 template class Slot<uint32_t>;
 template class Slot<double>;
 
 template class Canvas<float>;
-template class Canvas<unsigned char>;
+template class Canvas<uint8_t>;
+template class Canvas<int8_t>;
 template class Canvas<uint64_t>;
 template class Canvas<uint32_t>;
 template class Canvas<double>;

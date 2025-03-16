@@ -150,7 +150,7 @@ GdalTiffReader::GdalTiffReader(const std::string& fileName, int sizeX, int sizeY
 	options_ = CSLSetNameValue(options_, "COMPRESS", "PACKBITS");*/
 	options_ = CSLSetNameValue(options_, "BIGTIFF", "YES");
 	GDALDriver* poDriver = GetGDALDriverManager()->GetDriverByName("GTiff");
-	gdalDataset_ = poDriver->Create(fileName.data(), sizeX, sizeY, bandCount, ints64 ? GDT_UInt32 : GDT_Byte, options_);
+	gdalDataset_ = poDriver->Create(fileName.data(), sizeX, sizeY, bandCount, ints64 ? GDT_UInt32 : GDT_Int8, options_);
 }
 
 GdalTiffReader::~GdalTiffReader() {

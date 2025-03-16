@@ -196,6 +196,7 @@
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Create</PrecompiledHeader>
     </ClCompile>
     <ClCompile Include="Src\Plugin.cpp" />
+    <ClCompile Include="Src\TempManager.cpp" />
     <ClCompile Include="Src\Timer.cpp" />
     <ClCompile Include="Src\Utils.cpp" />
   </ItemGroup>
@@ -208,6 +209,8 @@
     <ClInclude Include="Src\IGeoTiffReader.h" />
     <ClInclude Include="Src\pch.h" />
     <ClInclude Include="Src\Plugin.h" />
+    <ClInclude Include="Src\Spinlock.h" />
+    <ClInclude Include="Src\TempManager.h" />
     <ClInclude Include="Src\Timer.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

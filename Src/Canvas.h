@@ -4,6 +4,7 @@
 
 #include "GdalTiffReader.h"
 #include "Grid.hpp"
+#include "Spinlock.h"
 
 typedef std::shared_ptr<IGeoTiffReader> GEOTIFF_READER;
 typedef std::shared_ptr<IRasterBand> RASTER_BAND;
@@ -66,7 +67,7 @@ class Canvas {
 public:
 	typedef std::shared_ptr<Slot<T>> SLOT;
 
-	Canvas(RASTER_BAND band, bool dumping = false);
+	Canvas(RASTER_BAND band, bool rareLocking, bool dumping = false);
 	~Canvas();
 
 	DataHolder<T> at(int x, int y, int index = 0);
@@ -84,6 +85,7 @@ private:
 	int step_ = 1000;
 
 	bool dumping_;
+	bool rareLocking_ = true;
 
-	std::mutex slotsMtx_;
+	Spinlock slotsMtx_;
 };
