@@ -11,13 +11,7 @@ void ConsoleLogger::setCallback(CallbackType callback) {
 }
 
 ConsoleLogger::ProxyBuffer::~ProxyBuffer() {
-    keepRunning_ = false;
-    processConditionVariable_.notify_all();
     queueConditionVariable_.notify_all();
-
-    if (thread_.joinable()) {
-        thread_.join();
-    }
 }
 
 ConsoleLogger::ProxyBuffer::int_type ConsoleLogger::ProxyBuffer::overflow(int_type ch) {
@@ -39,35 +33,17 @@ ConsoleLogger::ProxyBuffer::int_type ConsoleLogger::ProxyBuffer::overflow(int_ty
             if (callback) {
                 string_.pop_back();
 
-                queue_.push(string_);
-                processConditionVariable_.notify_one();
-
-                string_.clear();
-
-                isLocked_ = false;
-                ownerThreadId_ = std::thread::id();
-                queueConditionVariable_.notify_one();
+                getInstance().callback_(string_.data());
             }
+            string_.clear();
+
+            isLocked_ = false;
+            ownerThreadId_ = std::thread::id();
+            queueConditionVariable_.notify_one();
         }
     }
 
     return ch;
-}
-
-void ConsoleLogger::ProxyBuffer::processQueue() {
-    while (keepRunning_) {
-        std::unique_lock<std::mutex> lock(mutex_);
-        processConditionVariable_.wait(lock, [this]{ return !queue_.empty() || !keepRunning_; });
-
-        if (!keepRunning_) {
-            break;
-        }
-        
-        std::string message = queue_.front().data();
-        queue_.pop();
-
-        getInstance().callback_(message.data());
-    }
 }
 
 /*int ConsoleLogger::ProxyBuffer::sync() {

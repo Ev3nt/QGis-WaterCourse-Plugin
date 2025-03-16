@@ -22,7 +22,7 @@ private:
 
     class ProxyBuffer : public std::streambuf {
     public:
-        ProxyBuffer(std::streambuf* buffer) : buffer_(buffer), thread_(&ProxyBuffer::processQueue, this), keepRunning_(true) {}
+        ProxyBuffer(std::streambuf* buffer) : buffer_(buffer)/*, thread_(&ProxyBuffer::processQueue, this)*/ {}
         ~ProxyBuffer();
 
     protected:
@@ -31,17 +31,13 @@ private:
         //virtual int sync();
 
     private:
-        void processQueue();
-
         std::streambuf* buffer_;
         std::string string_;
         std::queue<std::string> queue_;
 
         std::mutex mutex_;
-        std::atomic_bool keepRunning_;
-        std::condition_variable processConditionVariable_, queueConditionVariable_;
+        std::condition_variable queueConditionVariable_;
 
-        std::thread thread_;
         std::thread::id ownerThreadId_;
         std::atomic_bool isLocked_ = false;
     };

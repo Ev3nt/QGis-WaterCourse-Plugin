@@ -67,7 +67,7 @@ int Plugin::calculateEnters(CANVAS_BYTE& directions, int x, int y, int index) {
 			int ny = y + j;
 
 			auto neighbour = directions->at(nx, ny, -index);
-			if (!neighbour.valid()) {
+			if (!neighbour.valid() || neighbour == directionNoData_.value()) {
 				continue;
 			}
 
@@ -309,8 +309,11 @@ void Plugin::directionProcess(CANVAS_FLOAT& terrain, CANVAS_BYTE& directions, in
 			if (interrupted.load(std::memory_order_relaxed)) {
 				throw std::exception();
 			}
-			
-			int direction = calculateFlowDirection(terrain, x, y, index);
+
+			int direction = directionNoData_.value();
+			if (!terrainNoData_.has_value() || terrain->at(x, y, index) != terrainNoData_.value()) {
+				direction = calculateFlowDirection(terrain, x, y, index);
+			}
 
 			if (!direction) {
 				interrupted = true;
@@ -334,9 +337,13 @@ void Plugin::directionProcess(CANVAS_FLOAT& terrain, CANVAS_BYTE& directions, in
 
 	for (int y = rowOffset; y < rowOffset + height; y++) {
 		for (int x = 0; x < width; x++) {
-			int enters = calculateEnters(directions, x, y, index);
-
 			auto direction = directions->at(x, y, index);
+
+			if (direction == directionNoData_.value()) {
+				continue;
+			}
+
+			int enters = calculateEnters(directions, x, y, index);
 
 			if (!enters) {
 				source = { x, y };
@@ -381,7 +388,7 @@ void Plugin::accumulationProcess(CANVAS_UINT32& accumulation, CANVAS_BYTE& direc
 
 		while (true) {
 			auto direction = directions->at(x, y, index);
-			if (!direction.valid()) {
+			if (!direction.valid() || direction == directionNoData_.value()) {
 				break;
 			}
 
