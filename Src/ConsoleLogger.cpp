@@ -27,10 +27,10 @@ ConsoleLogger::ProxyBuffer::int_type ConsoleLogger::ProxyBuffer::overflow(int_ty
 
         if (ownerThreadId_ != threadId) {
             queueConditionVariable_.wait(lock, [this] { return !isLocked_.load(std::memory_order_relaxed); });
-        }
 
-        ownerThreadId_ = threadId;
-        isLocked_ = true;
+            ownerThreadId_ = threadId;
+            isLocked_ = true;
+        }
 
         string_ += ch;
         
